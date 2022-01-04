@@ -1,12 +1,7 @@
 from flask import Flask, render_template, request, url_for, redirect
 
 app = Flask(__name__)
-
-
-
-
-
-
+app.config['SECRET_KEY'] = 'chandelier'
 
 
 @app.route('/login', methods=['POST'])
