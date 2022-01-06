@@ -61,8 +61,16 @@ def logout():
     return 'logged out'
 @app.route('/public_travel',methods=['GET'])
 def view_all_travels():
+    #closes from first
+    #if specific city input
+    #filter city -> type -> like most
+    #default location is Los Angeles
 
-    sql="""select * from {schema}.travel_plans where isPublic=1 and city='{city}'"""
+
+    if city is not None:
+        sql="""select * from {schema}.travel_plans where isPublic=1 and city='{city}'"""
+    elif city is None:
+        sql="""select * from {schema}.travel_plans where isPublic=1"""
 
 
 if __name__ == "__main__":
