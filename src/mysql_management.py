@@ -117,6 +117,7 @@ class MysqlQue(object):
     def autoTerminate(self):
         for i in self.garbageCollector():
             self.que_terminate(i)
+
 if __name__ == '__main__':
     instance1=QueryManager('server.echoad.co.kr','jlee','dlwhdwls12',33069)
     instance2 = QueryManager('server.echoad.co.kr', 'jlee', 'dlwhdwls12', 33069)

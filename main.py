@@ -68,28 +68,30 @@ def logout():
 #my trips
 @app.route('/my_saves',methods=['POST'])
 def my_saves():
-    user = request.get_json()
-    # verify process
-    private_key=user['private_key']
-    require=config.PrivateKeyVerification(private_key)
-    log_in_verified=require.verification()
-    # verify process done
-    if log_in_verified is not None:
-        member_id=log_in_verified
-        sql = """select * from {schema}.travel_plans where member_id = {mem_id} order by modified_date desc""".format(
-            schema=ini_settings['db']['database'],mem_id=member_id)
-        db_access = config.DB_settings().getAccess('db')
-        if db_access is None: raise Exception("DB ACCESS FAILS")
-        sql_instance = QueryManager(db_access['host'], db_access['user'], db_access['password'], db_access['port'])
-        sql_instance.setQuery=sql
-        df_travel = sql_instance.sql_to_pandas()
-        sql_instance.close()
-        if df_travel.empty:return jsonify([])
-        result_json = df_travel.to_json(orient='records')
-        return result_json
-    else:
-        return "false"
-
+    try:
+        user = request.get_json()
+        # verify process
+        private_key=user['private_key']
+        require=config.PrivateKeyVerification(private_key)
+        log_in_verified=require.verification()
+        # verify process done
+        if log_in_verified is not None:
+            member_id=log_in_verified
+            sql = """select * from {schema}.travel_plans where member_id = {mem_id} order by modified_date desc""".format(
+                schema=ini_settings['db']['database'],mem_id=member_id)
+            db_access = config.DB_settings().getAccess('db')
+            if db_access is None: raise Exception("DB ACCESS FAILS")
+            sql_instance = QueryManager(db_access['host'], db_access['user'], db_access['password'], db_access['port'])
+            sql_instance.setQuery=sql
+            df_travel = sql_instance.sql_to_pandas()
+            sql_instance.close()
+            if df_travel.empty:return jsonify([])
+            result_json = df_travel.to_json(orient='records')
+            return result_json
+        else:
+            return "false","valid private key required"
+    except Exception as err:
+        return "false",str(err)
 #setUp trips
 #insert new trip
 @app.route('/new-trip',methods=['POST'])
