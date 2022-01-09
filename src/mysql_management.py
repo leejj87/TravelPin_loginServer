@@ -87,7 +87,6 @@ class QueryManager(Connection):
             pass
         finally:
             self.close_connection()
-
 class MysqlQue(object):
     def __init__(self):
         self.__dict_que={}

@@ -1,7 +1,9 @@
 from flask import Flask, jsonify, request,session,redirect
+import hashlib
+import config
 import os
 #from src.util import encryped
-import uuid
+
 from src import util
 from src import ini_path
 from src.mysql_management import QueryManager,MysqlQue
@@ -11,45 +13,42 @@ app.secret_key = ini_settings['SECRET_KEY']
 SQLSESSION=MysqlQue()
 @app.route('/')
 def index():
-    if 'email' in session:
-        return session['email']
-    else:
-        return redirect('/login')
+    return "Developing Page"
 @app.route('/sign-up', methods = ['POST'])
 def sign_up():
     try:
         user = request.get_json()
         user['password']=util.encryped(user['password'])
         #password=user['password']
-        sql_user=ini_settings.get('db').get('user')
-        sql_password=ini_settings.get('db').get('password')
-        sql_host=ini_settings.get('db').get('host')
-        sql_port=ini_settings.get('db').get('port')
-        sql_instance=QueryManager(sql_host,sql_user,sql_password,sql_port)
+        db_access=config.DB_settings().getAccess('db')
+        if db_access is None: raise Exception("DB ACCESS FAILS")
+        sql_instance=QueryManager(db_access['host'],db_access['user'],db_access['password'],db_access['port'])
+        key_string=user['email']+ini_settings.get("DB_PASSWORD_KEY")
+        private_key= hashlib.sha256(key_string.encode())
+        private_key=private_key.hexdigest()
         sql="""INSERT INTO {schema}.member (
                                 email,UserNickName,
-                                password
+                                password,privateKey
                                ) VALUES (
                                 '{email}',
                                 '{nickname}',
-                                '{password}'
+                                '{password}',
+                                '{private_key}'
                                )""".format(schema=ini_settings['db']['database'],email=user['email'],
-                                           nickname=user['name'],password=user['password'])
+                                           nickname=user['name'],password=user['password'],private_key=private_key)
         sql_instance.setQuery=sql
         sql_instance.executeQuery()
         sql_instance.close()
     except Exception as err:
-        return str(err),404
-    return "New User Added", 200
+        return "false",str(err)
+    return "true"
 @app.route('/login', methods=['POST'])
 def login():
     user = request.get_json()
     user['password'] = util.encryped(user['password'])
-    sql_user = ini_settings.get('db').get('user')
-    sql_password = ini_settings.get('db').get('password')
-    sql_host = ini_settings.get('db').get('host')
-    sql_port = ini_settings.get('db').get('port')
-    sql_instance = QueryManager(sql_host, sql_user, sql_password, sql_port)
+    db_access = config.DB_settings().getAccess('db')
+    if db_access is None: raise Exception("DB ACCESS FAILS")
+    sql_instance = QueryManager(db_access['host'], db_access['user'], db_access['password'], db_access['port'])
     sql="""select * from {schema}.member where email='{email}' and password='{password}'""".format(schema=ini_settings['db']['database'],
                                                                         email=user['email'],password=user['password'])
     sql_instance.setQuery=sql
@@ -57,9 +56,10 @@ def login():
     sql_instance.close()
     if not df.empty:
         session['email']=user['email']
-        return 'logged in'
+        private_key=df['privateKey'][0]
+        return private_key
     else:
-        return 'email or password is not matched'
+        return "null"
 @app.route('/logout')
 def logout():
     session.pop("email",None)
@@ -68,7 +68,66 @@ def logout():
 #my trips
 @app.route('/my_saves',methods=['POST'])
 def my_saves():
+    user = request.get_json()
+    # verify process
+    private_key=user['private_key']
+    require=config.PrivateKeyVerification(private_key)
+    log_in_verified=require.verification()
+    # verify process done
+    if log_in_verified is not None:
+        member_id=log_in_verified
+        sql = """select * from {schema}.travel_plans where member_id = {mem_id} order by modified_date desc""".format(
+            schema=ini_settings['db']['database'],mem_id=member_id)
+        db_access = config.DB_settings().getAccess('db')
+        if db_access is None: raise Exception("DB ACCESS FAILS")
+        sql_instance = QueryManager(db_access['host'], db_access['user'], db_access['password'], db_access['port'])
+        sql_instance.setQuery=sql
+        df_travel = sql_instance.sql_to_pandas()
+        sql_instance.close()
+        if df_travel.empty:return jsonify([])
+        result_json = df_travel.to_json(orient='records')
+        return result_json
+    else:
+        return "false"
+
+#setUp trips
+#insert new trip
+@app.route('/new-trip',methods=['POST'])
+def addNewTrip():
+    try:
+        user = request.get_json()
+        # verify process
+        private_key = user['private_key']
+        city=user['city']
+        state=user['state']
+        concept=user['concept']
+        isPublic=user['is_public']
+        require = config.PrivateKeyVerification(private_key)
+        log_in_verified = require.verification()
+        # verify process done
+        if log_in_verified is not None:
+            mem_id=log_in_verified
+            city_code=config.city_finder(city,state)
+            if city_code is None: return "null","city code error"
+            sql="""insert into {schema}.travel_plans (member_id,city_code,travel_concept,isPublic)
+            values ({mem_id},{city_code},'{concept}',{is_public})""".format(mem_id=mem_id,city_code=city_code,
+                                                                            concept=concept,isPublic=isPublic)
+            db_access = config.DB_settings().getAccess('db')
+            if db_access is None: raise Exception("DB ACCESS FAILS")
+            sql_instance = QueryManager(db_access['host'], db_access['user'], db_access['password'], db_access['port'])
+            sql_instance.setQuery = sql
+            sql_instance.executeQuery()
+            sql_instance.close()
+    except Exception as err:
+        return "false",str(err)
+    else:
+        return "true"
+#update trip
+@app.route('/trip-update',methods=['POST'])
+def updateNewTrip():
     pass
+
+
 
 #public use functions
 @app.route('/public_travel',methods=['GET'])
@@ -81,11 +140,9 @@ def view_all_travels():
     except:
         #default is at Los Angeles
         lat,lng,radius=33.973093,-118.247896,50
-    sql_user = ini_settings.get('db_public_select').get('user')
-    sql_password = ini_settings.get('db_public_select').get('password')
-    sql_host = ini_settings.get('db_public_select').get('host')
-    sql_port = ini_settings.get('db_public_select').get('port')
-    sql_instance = QueryManager(sql_host, sql_user, sql_password, sql_port)
+    db_access = config.DB_settings().getAccess('db_public_select')
+    if db_access is None: raise Exception("DB ACCESS FAILS")
+    sql_instance = QueryManager(db_access['host'], db_access['user'], db_access['password'], db_access['port'])
     sql="""SELECT id,member_id,city_code,travel_concept,likes,hash_tags 
     FROM {schema}.travel_plans WHERE isPublic =1 AND id IN(
     SELECT travel_id FROM {schema}.travel_plans_details_geodata_average WHERE 69.0 *DEGREES(ACOS(LEAST(1.0, COS(RADIANS(lat))
