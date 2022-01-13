@@ -155,9 +155,19 @@ def view_all_travels():
                                                                             lat=lat,lng=lng,radius=radius)
     sql_instance.setQuery=sql
     df=sql_instance.sql_to_pandas()
+    sql_instance.close()
     result_json=df.to_json(orient = 'records')
     return result_json
 
+@app.route('/locations')
+def view_all_locations():
+    db_access = config.DB_settings().getAccess('db_public_select')
+    if db_access is None: raise Exception("DB ACCESS FAILS")
+    sql_instance = QueryManager(db_access['host'], db_access['user'], db_access['password'], db_access['port'])
+    sql ="""select * from {}.RegionGeoInfo""".format(ini_settings['db']['database'])
+    sql_instance.setQuery=sql
+    df=sql_instance.sql_to_pandas()
+    return df.to_json(orient = 'records')
 
 if __name__ == "__main__":
     app.run()
